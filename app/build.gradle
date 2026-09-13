@@ -8,7 +8,8 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     id 'application'
-
+    id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+    id 'maven-publish'
 }
 
 repositories {
@@ -32,6 +33,10 @@ repositories {
 }
 
 dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
     // Use JUnit Jupiter for testing.
     testImplementation libs.junit.jupiter
 
@@ -42,7 +47,7 @@ dependencies {
     implementation('com.seedfinding:mc_seed:1.171.2')
     implementation('com.seedfinding:mc_core:1.210.0')
     implementation('com.seedfinding:mc_feature:1.171.9')
-    implementation('com.github.jellejurre:seed-checker:1.2.0-1.18.1'){transitive=false}
+    //implementation('com.github.jellejurre:seed-checker:1.2.0-1.18.1'){transitive=false}
     implementation 'com.github.KalleStruik:noise-sampler:1.20.0'
 }
 

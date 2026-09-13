@@ -4,30 +4,12 @@
 package org.seedfilter;
 
 import net.minecraft.block.Block;
+import net.minecraft.block.Blocks;
 import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.text.MutableText;
 import net.minecraft.util.math.BlockPos;
-import nl.jellejurre.seedchecker.SeedChecker;
-import nl.jellejurre.seedchecker.SeedCheckerDimension;
-import nl.jellejurre.seedchecker.TargetState;
 
 public class SeedFilter {
     public static void main(String[] args) {
-        System.out.println("Started");
-        SeedChecker checker = new SeedChecker(1234L, TargetState.FULL, SeedCheckerDimension.OVERWORLD);
-        System.out.println("Initialized checker");
-        BlockPos bp = new BlockPos(-583, 20, 1586);
-        // BlockPos bp = new BlockPos(-582, 20, 1584);
-        System.out.println("got bp");
-        Block block = checker.getBlock(bp);
-        //BlockEntity be = checker.getBlockEntity(bp);
-        //if(be == null) {
-        //    System.out.println("no block entity");
-        //    return;
-        //}
-        System.out.println("got block");
-        //var nbt = be.createNbt();
-        //System.out.println(nbt.toString());
-        System.out.println(block.getName().toString());
+        System.out.println("Started ");
     }
 }
