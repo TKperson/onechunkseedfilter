@@ -11,16 +11,16 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
+
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.block.entity.ChestBlockEntity;
+import net.minecraft.client.resource.server.ServerResourcePackManager;
 import net.minecraft.datafixer.Schemas;
 import net.minecraft.fluid.FluidState;
 import net.minecraft.item.ItemStack;
@@ -36,6 +36,7 @@ import net.minecraft.resource.ServerResourceManager;
 import net.minecraft.server.network.SpawnLocating;
 import net.minecraft.server.world.ServerLightingProvider;
 import net.minecraft.structure.StructureManager;
+import net.minecraft.structure.StructureTemplateManager;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.BlockPos;
@@ -49,15 +50,9 @@ import net.minecraft.util.registry.Registry;
 import net.minecraft.world.ChunkRegion;
 import net.minecraft.world.Heightmap;
 import net.minecraft.world.World;
-import net.minecraft.world.biome.Biome;
 import net.minecraft.world.biome.source.BiomeSource;
-import net.minecraft.world.biome.source.MultiNoiseBiomeSource;
-import net.minecraft.world.biome.source.TheEndBiomeSource;
-import net.minecraft.world.chunk.BelowZeroRetrogen;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.ChunkStatus;
-import net.minecraft.world.chunk.Palette;
-import net.minecraft.world.chunk.PalettedContainer;
 import net.minecraft.world.chunk.ProtoChunk;
 import net.minecraft.world.chunk.UpgradeData;
 import net.minecraft.world.chunk.light.LightingProvider;
@@ -66,10 +61,9 @@ import net.minecraft.world.dimension.DimensionType;
 import net.minecraft.world.gen.Blender;
 import net.minecraft.world.gen.GenerationStep;
 import net.minecraft.world.gen.GeneratorOptions;
-import net.minecraft.world.gen.Blender;
-import net.minecraft.world.gen.ChunkGenerator;
 import net.minecraft.world.gen.NoiseChunkGenerator;
 import net.minecraft.world.gen.NoiseSamplingConfig;
+import net.minecraft.world.gen.chunk.ChunkGenerator;
 import nl.jellejurre.seedchecker.serverMocks.FakeLevelStorage;
 import nl.jellejurre.seedchecker.serverMocks.FakeLightingProvider;
 import nl.jellejurre.seedchecker.serverMocks.FakeSaveProperties;
@@ -84,12 +78,11 @@ public class SeedChunkGenerator {
     private SeedCheckerDimension dimension;
     private ChunkGenerator chunkGenerator;
     private FakeLevelStorage levelStorage;
-    private StructureManager structureManager;
+    private StructureTemplateManager structureTemplateManager;
     private FakeServerWorld fakeServerWorld;
     private LightingProvider fakeLightingProvider;
-    private DynamicRegistryManager.Impl registryManager;
     private ResourcePackManager resourcePackManager;
-    private ServerResourceManager serverResourceManager;
+    private ServerResourcePackManager serverResourcePackManager;
     private ResourceManager resourceManager;
     private FakeLevelStorage.FakeSession session;
     private FakeSaveProperties saveProperties;
@@ -110,16 +103,16 @@ public class SeedChunkGenerator {
         this.dimension = dimension;
         this.targetLevel = targetLevel;
         this.createLight = createLight;
-        registryManager = SeedCheckerSettings.registryManager;
+        //registryManager = SeedCheckerSettings.registryManager;
         resourcePackManager = SeedCheckerSettings.resourcePackManager;
-        serverResourceManager = SeedCheckerSettings.serverResourceManager;
+        serverResourcePackManager = SeedCheckerSettings.serverResourcePackManager;
         resourceManager = SeedCheckerSettings.resourceManager;
         saveProperties = new FakeSaveProperties(registryManager, seed);
         //We don't want anything storing anything
         levelStorage = FakeLevelStorage.create(Path.of(""));
         try {
             session = levelStorage.createSession();
-            structureManager =
+            structureTemplateManager =
                 new StructureManager(resourceManager,
                     session,
                     Schemas.getFixer());
@@ -152,7 +145,7 @@ public class SeedChunkGenerator {
         fakeServerWorld = FakeServerWorld.create(registryManager, World.OVERWORLD,
             registryManager.get(Registry.DIMENSION_TYPE_KEY)
                 .getOrThrow(DimensionType.OVERWORLD_REGISTRY_KEY), seed,
-            resourcePackManager, saveProperties, chunkGenerator, serverResourceManager, this, session);
+            resourcePackManager, saveProperties, chunkGenerator, serverResourcePackManager, this, session);
     }
 
     private void initNether() {
@@ -163,7 +156,7 @@ public class SeedChunkGenerator {
         fakeServerWorld = FakeServerWorld.create(registryManager, World.NETHER,
             registryManager.get(Registry.DIMENSION_TYPE_KEY)
                 .getOrThrow(DimensionType.THE_NETHER_REGISTRY_KEY), seed,
-            resourcePackManager, saveProperties, chunkGenerator, serverResourceManager, this, session);
+            resourcePackManager, saveProperties, chunkGenerator, serverResourcePackManager, this, session);
     }
 
     private void initEnd(){
@@ -172,12 +165,12 @@ public class SeedChunkGenerator {
         chunkGenerator = dimensionOptions.getChunkGenerator();
 
         DimensionType endDimension = registryManager.get(Registry.DIMENSION_TYPE_KEY)
-            .getOrThrow(DimensionType.THE_END_REGISTRY_KEY);
+            .getOrThrow(World.END);
         //Turn off ender dragon fight
         ReflectionUtils.setValueOfField(endDimension, "field_24764", "hasEnderDragonFight", false);
         fakeServerWorld = FakeServerWorld.create(registryManager, World.END,
             endDimension, seed,
-            resourcePackManager, saveProperties, chunkGenerator, serverResourceManager, this, session);
+            resourcePackManager, saveProperties, chunkGenerator, serverResourcePackManager, this, session);
     }
 
 
@@ -347,7 +340,7 @@ public class SeedChunkGenerator {
         }
         Identifier lootTableId = (Identifier) ReflectionUtils.getValueFromField(chest, "field_12037", "lootTableId");
         long lootTableSeed = (long) ReflectionUtils.getValueFromField(chest, "field_12036", "lootTableSeed");
-        LootTable lootTable = serverResourceManager.getLootManager().getTable(lootTableId);
+        LootTable lootTable = serverResourcePackManager.getLootManager().getTable(lootTableId);
         LootContext.Builder lootContextBuilder = new LootContext.Builder(fakeServerWorld).parameter(
             LootContextParameters.ORIGIN, Vec3d.ofCenter(chest.getPos())).random(lootTableSeed);
         return lootTable.generateLoot(lootContextBuilder.build(LootContextTypes.CHEST));
@@ -506,7 +499,7 @@ public class SeedChunkGenerator {
         if (chunk.getStatus().isAtLeast(ChunkStatus.STRUCTURE_STARTS))
             return;
         chunkGenerator.setStructureStarts(fakeServerWorld.getRegistryManager(),
-            fakeServerWorld.getStructureAccessor(), chunk, structureManager, seed);
+            fakeServerWorld.getStructureAccessor(), chunk, structureTemplateManager, seed);
         chunk.setStatus(ChunkStatus.STRUCTURE_STARTS);
     }
 

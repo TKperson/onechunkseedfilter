@@ -1,33 +1,29 @@
 package nl.jellejurre.seedchecker;
 
 import java.io.PrintStream;
-import java.net.URI;
+import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.concurrent.ExecutionException;
 import net.minecraft.Bootstrap;
 import net.minecraft.SharedConstants;
+import net.minecraft.client.resource.server.ServerResourcePackManager;
 import net.minecraft.resource.DataPackSettings;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.resource.ResourcePackManager;
-import net.minecraft.resource.ResourceType;
-import net.minecraft.resource.ServerResourceManager;
 import net.minecraft.resource.VanillaDataPackProvider;
+import net.minecraft.resource.featuretoggle.FeatureSet;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.util.Util;
-import net.minecraft.util.registry.DynamicRegistryManager;
-import nl.jellejurre.seedchecker.serverMocks.FakeLogger;
+import net.minecraft.util.path.SymlinkFinder;
 import nl.jellejurre.seedchecker.serverMocks.FakeLoggerContextFactory;
-import nl.jellejurre.seedchecker.serverMocks.FakeServerResourceManager;
+import nl.jellejurre.seedchecker.serverMocks.FakeServerResourcePackManager;
 import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.message.MessageFactory;
-import org.apache.logging.log4j.spi.ExtendedLogger;
-import org.apache.logging.log4j.spi.LoggerContext;
-import org.apache.logging.log4j.spi.LoggerContextFactory;
 
 public class SeedCheckerSettings {
-    public static DynamicRegistryManager.Impl registryManager;
+    //public static DynamicRegistryManager.Impl registryManager;
     public static ResourcePackManager resourcePackManager;
-    public static ServerResourceManager serverResourceManager;
+    public static ServerResourcePackManager serverResourcePackManager;
     public static ResourceManager resourceManager;
     private static boolean init = false;
 
@@ -42,7 +38,7 @@ public class SeedCheckerSettings {
     //We use an initialise method instead of doing this on import to save time for when people import this class but don't use it,
     //since this method takes literal seconds
     public static void initialise(){
-        if(init==false) {
+        if(!init) {
             //Remove the loggers, we don't want log files
             LogManager.setFactory(new FakeLoggerContextFactory());
 
@@ -86,12 +82,17 @@ public class SeedCheckerSettings {
             //Setup our ResourceManagers and constants
             SharedConstants.createGameVersion();
             ReflectionUtils.setValueOfStaticField(Bootstrap.class, "field_13357", "initialized", true);
-            registryManager = DynamicRegistryManager.create();
+            //registryManager = DynamicRegistryManager.create();
             resourcePackManager =
-                new ResourcePackManager(ResourceType.SERVER_DATA, new VanillaDataPackProvider());
-            MinecraftServer.loadDataPacks(resourcePackManager, DataPackSettings.SAFE_MODE, true);
+                new ResourcePackManager(new VanillaDataPackProvider(new SymlinkFinder(new PathMatcher() {
+                    @Override
+                    public boolean matches(Path path) {
+                        return false;
+                    }
+                })));
+            MinecraftServer.loadDataPacks(resourcePackManager, DataPackSettings.SAFE_MODE, true, FeatureSet.empty());
             try {
-                serverResourceManager = FakeServerResourceManager
+                serverResourcePackManager = FakeServerResourcePackManager
                     .reload(resourcePackManager.createResourcePacks(), registryManager,
                         CommandManager.RegistrationEnvironment.DEDICATED, 3,
                         Util.getMainWorkerExecutor(),
@@ -100,8 +101,8 @@ public class SeedCheckerSettings {
                 System.out.println("Couldn't reload FakeServerResourceManager");
                 ex.printStackTrace();
             }
-            serverResourceManager.loadRegistryTags();
-            resourceManager = serverResourceManager.getResourceManager();
+            serverResourcePackManager.loadRegistryTags();
+            resourceManager = serverResourcePackManager.getResourceManager();
             //Don't run this function again
             init=true;
             //Set the system.out back to the normal state

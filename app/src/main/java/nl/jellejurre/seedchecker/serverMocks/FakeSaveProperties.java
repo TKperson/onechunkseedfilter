@@ -1,14 +1,9 @@
 package nl.jellejurre.seedchecker.serverMocks;
 
 import com.mojang.serialization.Lifecycle;
-import java.util.Properties;
 import java.util.Set;
-import net.minecraft.client.world.GeneratorType;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.resource.DataPackSettings;
-import net.minecraft.util.registry.DynamicRegistryManager;
-import net.minecraft.util.registry.Registry;
-import net.minecraft.util.registry.SimpleRegistry;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.GameRules;

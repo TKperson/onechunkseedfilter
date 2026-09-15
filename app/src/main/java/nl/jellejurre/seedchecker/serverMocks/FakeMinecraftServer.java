@@ -3,170 +3,189 @@ package nl.jellejurre.seedchecker.serverMocks;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.mojang.authlib.GameProfile;
-import com.mojang.authlib.GameProfileRepository;
-import com.mojang.authlib.minecraft.MinecraftSessionService;
 import com.mojang.datafixers.DataFixer;
 import com.mojang.datafixers.util.Either;
-import java.io.File;
 import java.io.IOException;
 import java.net.Proxy;
 import java.nio.file.Path;
 import java.security.KeyPair;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
+
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.block.Block;
+import net.minecraft.client.resource.server.ServerResourcePackManager;
 import net.minecraft.command.DataCommandStorage;
 import net.minecraft.datafixer.Schemas;
 import net.minecraft.entity.boss.BossBarManager;
-import net.minecraft.loot.LootManager;
-import net.minecraft.loot.condition.LootConditionManager;
+import net.minecraft.registry.*;
+import net.minecraft.resource.LifecycledResourceManager;
 import net.minecraft.resource.ResourcePackManager;
-import net.minecraft.resource.ServerResourceManager;
 import net.minecraft.scoreboard.ServerScoreboard;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.PlayerManager;
-import net.minecraft.server.ServerMetadata;
-import net.minecraft.server.ServerNetworkIo;
-import net.minecraft.server.ServerTask;
-import net.minecraft.server.WorldGenerationProgressListenerFactory;
-import net.minecraft.server.WorldGenerationProgressLogger;
+import net.minecraft.server.*;
 import net.minecraft.server.function.CommandFunctionManager;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.structure.StructureManager;
-import net.minecraft.util.MetricsData;
-import net.minecraft.util.SystemDetails;
-import net.minecraft.util.UserCache;
-import net.minecraft.util.Util;
+import net.minecraft.structure.StructureTemplateManager;
+import net.minecraft.text.Text;
+import net.minecraft.util.*;
 import net.minecraft.util.profiler.DummyRecorder;
 import net.minecraft.util.profiler.ProfileResult;
 import net.minecraft.util.profiler.Profiler;
 import net.minecraft.util.profiler.ProfilerTiming;
 import net.minecraft.util.profiler.Recorder;
-import net.minecraft.util.registry.DynamicRegistryManager;
-import net.minecraft.util.registry.RegistryKey;
 import net.minecraft.util.thread.MessageListener;
 import net.minecraft.world.GameMode;
 import net.minecraft.world.SaveProperties;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldSaveHandler;
-import net.minecraft.world.level.LevelInfo;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelStorage;
 import nl.jellejurre.seedchecker.ReflectionUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 public class FakeMinecraftServer extends MinecraftServer {
-    public FakePlayerManager playerManager;
+    record ResourceManagerHolder(
+            LifecycledResourceManager resourceManager,
+            DataPackContents dataPackContents
+    ) implements AutoCloseable {
+        public void close() {
+            this.resourceManager.close();
+        }
+    }
 
-    static  Logger LOGGER = LogManager.getLogger();
-    public static  float field_33212 = 0.8F;
-    public static  int field_33213 = 100;
-    public static  int field_33206 = 50;
-    public static  int field_33214 = 6000;
-    public static  int field_33215 = 2000;
-    public static  int field_33216 = 15000;
-    public static  String LEVEL_PROTOCOL_NAME = "level";
-    public static  String LEVEL_PROTOCOL = "level://";
-    public static  long PLAYER_SAMPLE_UPDATE_INTERVAL = 5000000000L;
-    public static  int field_33218 = 12;
-    public static  String RESOURCES_ZIP_FILE_NAME = "resources.zip";
-    public static  File USER_CACHE_FILE = new File("usercache.json");
-    public static  int START_TICKET_CHUNK_RADIUS = 11;
-    public static  int START_TICKET_CHUNKS = 441;
-    public static  int field_33220 = 6000;
-    public static  int field_33221 = 3;
-    public static  int MAX_WORLD_BORDER_RADIUS = 29999984;
-    public static  LevelInfo DEMO_LEVEL_INFO;
-    public static  long MILLISECONDS_PER_TICK = 50L;
-    protected  LevelStorage.Session session;
-    protected  WorldSaveHandler saveHandler;
-    public  List<Runnable> serverGuiTickables = Lists.newArrayList();
-    public Recorder tickTimeTracker;
-    public Profiler profiler;
-    public Consumer<ProfileResult> field_33975;
-    public Consumer<Path> field_33976;
-    public boolean field_33977;
+    //private static final Logger LOGGER = LogUtils.getLogger();
+    public static final String VANILLA = "vanilla";
+    private static final float field_33212 = 0.8F;
+    private static final int field_33213 = 100;
+    //private static final long OVERLOAD_THRESHOLD_NANOS;
+    private static final int field_47144 = 20;
+    //private static final long OVERLOAD_WARNING_INTERVAL_NANOS;
+    private static final int field_47146 = 100;
+    //private static final long PLAYER_SAMPLE_UPDATE_INTERVAL_NANOS;
+    //private static final long PREPARE_START_REGION_TICK_DELAY_NANOS;
+    private static final int field_33218 = 12;
+    public static final int START_TICKET_CHUNK_RADIUS = 11;
+    private static final int START_TICKET_CHUNKS = 441;
+    private static final int field_33220 = 6000;
+    private static final int field_47149 = 100;
+    private static final int field_33221 = 3;
+    public static final int MAX_WORLD_BORDER_RADIUS = 29999984;
+    //public static final LevelInfo DEMO_LEVEL_INFO;
+    //public static final GameProfile ANONYMOUS_PLAYER_PROFILE;
+    protected LevelStorage.Session session;
+    protected WorldSaveHandler saveHandler;
+    private final List<Runnable> serverGuiTickables = Lists.newArrayList();
+    private Recorder recorder;
+    private Profiler profiler;
+    private Consumer<ProfileResult> recorderResultConsumer;
+    private Consumer<Path> recorderDumpConsumer;
+    private boolean needsRecorderSetup;
     @Nullable
-    public FakeMinecraftServer.class_6414 field_33978;
-    public boolean profilerEnabled;
-    public  ServerNetworkIo networkIo;
-    public  WorldGenerationProgressListenerFactory worldGenerationProgressListenerFactory;
-    public  ServerMetadata metadata;
-    public  Random random;
-    public  DataFixer dataFixer;
-    public String serverIp;
-    public int serverPort;
-    protected  DynamicRegistryManager.Impl registryManager;
-    public  Map<RegistryKey<World>, ServerWorld> worlds;
-    public volatile boolean running;
-    public boolean stopped;
-    public int ticks;
-    protected  Proxy proxy;
-    public boolean onlineMode;
-    public boolean preventProxyConnections;
-    public boolean pvpEnabled;
-    public boolean flightEnabled;
+    //private DebugStart debugStart;
+    private boolean needsDebugSetup;
+    private ServerNetworkIo networkIo;
+    private WorldGenerationProgressListenerFactory worldGenerationProgressListenerFactory;
     @Nullable
-    public String motd;
-    public int playerIdleTimeout;
-    public long[] lastTickLengths;
+    private ServerMetadata metadata;
     @Nullable
-    public KeyPair keyPair;
+    private ServerMetadata.Favicon favicon;
+    private Random random;
+    private DataFixer dataFixer;
+    private String serverIp;
+    private int serverPort;
+    private CombinedDynamicRegistries<ServerDynamicRegistryType> combinedDynamicRegistries;
+    private Map<RegistryKey<World>, ServerWorld> worlds;
+    private PlayerManager playerManager;
+    private volatile boolean running;
+    private boolean stopped;
+    private int ticks;
+    private int ticksUntilAutosave;
+    protected final Proxy proxy = Proxy.NO_PROXY;
+    private boolean onlineMode;
+    private boolean preventProxyConnections;
+    private boolean pvpEnabled;
+    private boolean flightEnabled;
     @Nullable
-    public String userName;
-    public boolean demo;
-    public String resourcePackUrl;
-    public String resourcePackHash;
-    public volatile boolean loading;
-    public long lastTimeReference;
-    public  MinecraftSessionService sessionService;
+    private String motd;
+    private int playerIdleTimeout;
+    //private final long[] tickTimes;
+    private long recentTickTimesNanos;
     @Nullable
-    public  GameProfileRepository gameProfileRepo;
+    private KeyPair keyPair;
     @Nullable
-    public  UserCache userCache;
-    public long lastPlayerSampleUpdate;
-    public  Thread serverThread;
-    public long timeReference;
-    public long nextTickTimestamp;
-    public boolean waitingForNextTick;
-    public boolean iconFilePresent;
-    public  ResourcePackManager dataPackManager;
-    public  ServerScoreboard scoreboard;
+    private GameProfile hostProfile;
+    private boolean demo;
+    private volatile boolean loading;
+    private long lastOverloadWarningNanos;
+    protected ApiServices apiServices;
+    private long lastPlayerSampleUpdate;
+    private final Thread serverThread = null;
+    private long tickStartTimeNanos;
+    private long tickEndTimeNanos;
+    private boolean waitingForNextTick;
+    private ResourcePackManager dataPackManager;
+    private ServerScoreboard scoreboard;
     @Nullable
-    public DataCommandStorage dataCommandStorage;
-    public  BossBarManager bossBarManager;
-    public  CommandFunctionManager commandFunctionManager;
-    public  MetricsData metricsData;
-    public boolean enforceWhitelist;
-    public float tickTime;
-    public  Executor workerExecutor;
+    private DataCommandStorage dataCommandStorage;
+    private BossBarManager bossBarManager;
+    private CommandFunctionManager commandFunctionManager;
+    private boolean enforceWhitelist;
+    private float averageTickTime;
+    private Executor workerExecutor;
     @Nullable
-    public String serverId;
-    public ServerResourceManager serverResourceManager;
-    public  StructureManager structureManager;
-    public  SaveProperties saveProperties;
+    private String serverId;
+    private ResourceManagerHolder resourceManagerHolder;
+    private StructureTemplateManager structureTemplateManager;
+    private ServerTickManager tickManager;
+    protected SaveProperties saveProperties;
+    private volatile boolean saving;
 
-    public FakeMinecraftServer(DynamicRegistryManager.Impl registryManager, LevelStorage.Session levelStorageSession, SaveProperties saveProperties,
-                               ResourcePackManager resourcePackManager, ServerResourceManager serverResourceManager, MinecraftSessionService minecraftSessionService, GameProfileRepository gameProfileRepository, UserCache userCache) {
-        super(null, registryManager, levelStorageSession, saveProperties, resourcePackManager, Proxy.NO_PROXY, Schemas
-            .getFixer(), serverResourceManager, minecraftSessionService, gameProfileRepository, userCache, WorldGenerationProgressLogger::new);
+    public FakeMinecraftServer(
+            LevelStorage.Session levelStorageSession,
+            ResourcePackManager resourcePackManager,
+            SaveLoader saveLoader,
+            ApiServices apiServices,
+            WorldGenerationProgressListenerFactory factory
+    ) {
+        super(
+                null,
+                levelStorageSession,
+                resourcePackManager,
+                saveLoader,
+                Proxy.NO_PROXY,
+                Schemas.getFixer(),
+                apiServices,
+                factory
+        );
 
         this.playerManager = new FakePlayerManager(this, null, null, 101);
     }
     
-    public static FakeMinecraftServer getMinecraftServer(DynamicRegistryManager.Impl registryManager, LevelStorage.Session levelStorageSession, SaveProperties saveProperties,
-                                                         ResourcePackManager resourcePackManager, ServerResourceManager serverResourceManager, MinecraftSessionService minecraftSessionService, GameProfileRepository gameProfileRepository, UserCache userCache){
+    public static FakeMinecraftServer getMinecraftServer(
+            LevelStorage.Session levelStorageSession,
+            ResourcePackManager resourcePackManager,
+            SaveLoader saveLoader,
+            ApiServices apiServices,
+            ServerResourcePackManager serverResourcePackManager,
+            WorldGenerationProgressListenerFactory factory
+    ){
         try {
             FakeMinecraftServer fakeMinecraftServer;
             fakeMinecraftServer = (FakeMinecraftServer) ReflectionUtils.unsafe.allocateInstance(FakeMinecraftServer.class);
-            fakeMinecraftServer.initialise(null, registryManager, levelStorageSession, saveProperties, resourcePackManager, Proxy.NO_PROXY, Schemas
-                .getFixer(), serverResourceManager, minecraftSessionService, gameProfileRepository, userCache, WorldGenerationProgressLogger::new);
+            fakeMinecraftServer.initialise(
+                    null,
+                    levelStorageSession,
+                    resourcePackManager,
+                    saveLoader,
+                    apiServices,
+                    Proxy.NO_PROXY,
+                    Schemas.getFixer(),
+                    serverResourcePackManager,
+                    factory
+            );
             return fakeMinecraftServer;
         } catch (Exception e) {
             e.printStackTrace();
@@ -179,16 +198,14 @@ public class FakeMinecraftServer extends MinecraftServer {
         return this.saveProperties.getGameMode();
     }
 
-
-
     @Override
-    public StructureManager getStructureManager() {
-        return structureManager;
+    public StructureTemplateManager getStructureTemplateManager() {
+        return this.structureTemplateManager;
     }
 
     @Override
     public void executeTask(ServerTask task) {
-        task.run();
+        super.executeTask(task);
     }
 
     @Override
@@ -202,49 +219,72 @@ public class FakeMinecraftServer extends MinecraftServer {
     }
 
     @Override
-    public DynamicRegistryManager getRegistryManager() {
-        return registryManager;
+    public DynamicRegistryManager.Immutable getRegistryManager() {
+        return this.combinedDynamicRegistries.getCombinedRegistryManager();
     }
 
-    public void initialise(Thread serverThread, DynamicRegistryManager.Impl registryManager, LevelStorage.Session session, SaveProperties saveProperties, ResourcePackManager dataPackManager, Proxy proxy, DataFixer dataFixer, ServerResourceManager serverResourceManager, @Nullable MinecraftSessionService sessionService, @Nullable GameProfileRepository gameProfileRepo, @Nullable UserCache userCache, WorldGenerationProgressListenerFactory worldGenerationProgressListenerFactory){
-        this.tickTimeTracker = DummyRecorder.INSTANCE;
-        this.profiler = this.tickTimeTracker.getProfiler();
-        this.field_33975 = (profileResult) -> {
-            this.resetRecorder();
-        };
-        this.field_33976 = (path) -> {
-        };
-        this.metadata = new ServerMetadata();
+    public void initialise(
+            Thread serverThread,
+            LevelStorage.Session levelStorageSession,
+            ResourcePackManager resourcePackManager,
+            SaveLoader saveLoader,
+            ApiServices apiServices,
+            Proxy proxy,
+            DataFixer dataFixer,
+            ServerResourcePackManager serverResourceManager,
+            WorldGenerationProgressListenerFactory worldGenerationProgressListenerFactory
+    ){
+        this.ticks = 0;
+        this.profiler = DummyRecorder.INSTANCE.getProfiler();
+
+        //ServerMetadata.Players players = this.createMetadataPlayers();
+        ServerMetadata.Players players = new ServerMetadata.Players(
+                255,
+                0,
+                new ObjectArrayList<>()
+        );
+        this.metadata = new ServerMetadata(
+                Text.of(""),
+                Optional.of(players),
+                Optional.of(ServerMetadata.Version.create()),
+                Optional.empty(),
+                this.shouldEnforceSecureProfile()
+        );
+
         this.random = new Random();
         this.serverPort = -1;
         this.worlds = Maps.newLinkedHashMap();
         this.running = true;
-        ReflectionUtils.setValueOfField(this, "lastTickLengths", "lastTickLengths", new long[100]);
-        this.resourcePackUrl = "";
-        this.resourcePackHash = "";
-        this.timeReference = Util.getMeasuringTimeMs();
+        //ReflectionUtils.setValueOfField(this, "lastTickLengths", "lastTickLengths", new long[100]);
+        //this.resourcePackUrl = "";
+        //this.resourcePackHash = "";
+        //this.timeReference = Util.getMeasuringTimeMs();
         this.scoreboard = new ServerScoreboard(this);
         this.bossBarManager = new BossBarManager();
-        this.metricsData = new MetricsData();
-        ReflectionUtils.setValueOfField(this, "registryManager", "registryManager", registryManager);
-        ReflectionUtils.setValueOfField(this, "saveProperties", "saveProperties",  saveProperties);
-        ReflectionUtils.setValueOfField(this, "proxy", "proxy", proxy);
-        this.dataPackManager = dataPackManager;
-        this.serverResourceManager = serverResourceManager;
-        this.sessionService = sessionService;
-        this.gameProfileRepo = gameProfileRepo;
-        this.userCache = userCache;
-        if (userCache != null) {
-            userCache.setExecutor(this);
-        }
+        //this.metricsData = new MetricsData();
+        //ReflectionUtils.setValueOfField(this, "registryManager", "registryManager", registryManager);
+        //ReflectionUtils.setValueOfField(this, "saveProperties", "saveProperties",  saveProperties);
+        this.dataPackManager = new ResourcePackManager();
+        //this.serverResourceManager = serverResourceManager;
+        //this.sessionService = sessionService;
+        //this.gameProfileRepo = gameProfileRepo;
+        //this.userCache = userCache;
+        //if (userCache != null) {
+        //    userCache.setExecutor(this);
+        //}
 
         this.networkIo = new ServerNetworkIo(this);
         this.worldGenerationProgressListenerFactory = worldGenerationProgressListenerFactory;
         ReflectionUtils.setValueOfField(this, "session", "session", session);
         ReflectionUtils.setValueOfField(this, "saveHandler", "saveHandler", session.createSaveHandler());
         this.dataFixer = dataFixer;
-        this.structureManager = new StructureManager(serverResourceManager.getResourceManager(), session, dataFixer);
-        this.serverThread = serverThread;
+        RegistryEntryLookup<Block> registryEntryLookup = this.combinedDynamicRegistries.getCombinedRegistryManager().get(RegistryKeys.BLOCK).getReadOnlyWrapper().withFeatureFilter(this.saveProperties.getEnabledFeatures());
+        this.structureTemplateManager = new StructureTemplateManager(
+                saveLoader.resourceManager(),
+                session,
+                dataFixer,
+                registryEntryLookup
+        );
         this.workerExecutor = Util.getMainWorkerExecutor();
         this.playerManager = new FakePlayerManager(this, null, null, 101);
     }
@@ -313,18 +353,6 @@ public class FakeMinecraftServer extends MinecraftServer {
     public boolean cannotBeSilenced() {
         return super.cannotBeSilenced();
     }
-
-    @Override
-    public LootManager getLootManager() {
-        return serverResourceManager.getLootManager();
-    }
-
-    @Override
-    public LootConditionManager getPredicateManager() {
-        return serverResourceManager.getLootConditionManager();
-    }
-
-
 
     @Override
     public boolean isHost(GameProfile profile) {
